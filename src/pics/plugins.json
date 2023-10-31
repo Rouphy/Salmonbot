@@ -1,0 +1,30 @@
+[
+    {
+        "id": 0,
+        "plugin": "help"
+    },
+    {
+        "id": 1,
+        "plugin": "mai"
+    },
+    {
+        "id": 2,
+        "plugin": "pjsk"
+    },
+    {
+        "id": 3,
+        "plugin": "ncm"
+    },
+    {
+        "id": 4,
+        "plugin": "whoatme"
+    },
+    {
+        "id": 5,
+        "plugin": "motd"
+    },
+	{
+		"id": 6,
+		"plugin": "bawiki"
+	}
+]
