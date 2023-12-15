@@ -522,3 +522,112 @@ async def _(message: Message = EventMessage()):
         ]))
     else:
         await find_alias.finish("id不存在")
+
+
+suggest = on_command('鸟加推荐')
+
+
+# 根据rating推荐可鸟加歌曲(每日更新)
+@suggest.handle()
+async def _(event: Event, message: Message = CommandArg()):
+    diff_label = ['Bas', 'Adv', 'Exp', 'Mst', 'ReM']
+    payload = {'qq': str(event.get_user_id()), 'b50': True}
+    rating, rating_sd, rating_dx = await getRating(payload)
+    if (rating == None):
+        if rating_sd == 400:
+            await best_40_pic.send("你疑似没有绑定查分器")
+    avg_sd, avg_dx = rating_sd // 35, rating_dx // 15
+    ds_sd, ds_dx = round(avg_sd / 22.4, 1), round(avg_dx / 22.4, 1)
+    musics = total_list
+    # 推荐定数浮动范围
+    result_sd, result_dx = musics.filter(ds=(ds_sd - 0.1, ds_sd + 0.2), type='SD'), musics.filter(
+        ds=(ds_dx - 0.1, ds_dx + 0.3), type='DX')
+    random.seed(datetime.now().strftime("%Y%m%d"))
+    # 标准乐谱 和 DX乐谱 歌曲推荐数量
+    sd_sample, dx_sample = random.sample(result_sd, 3), random.sample(result_dx, 3)
+    sd_result, dx_result = [], []
+    for music in sorted(sd_sample, key=lambda i: int(i['id'])):
+        for i in music.diff:
+            sd_result.append((music['id'], music['title'], music['ds'][i], diff_label[i], music['level'][i]))
+    for music in sorted(dx_sample, key=lambda i: int(i['id'])):
+        for i in music.diff:
+            dx_result.append((music['id'], music['title'], music['ds'][i], diff_label[i], music['level'][i]))
+    s1 = "sd:\n"
+    for elem in sd_result:
+        s1 += f"{elem[0]}. {elem[1]} {elem[3]} {elem[4]}({elem[2]})\n"
+    s2 = "dx:\n"
+    for elem in dx_result:
+        s2 += f"{elem[0]}. {elem[1]} {elem[3]} {elem[4]}({elem[2]})\n"
+    await suggest.finish(("今日鸟加推荐:\n" + s1 + s2).rstrip())
+
+
+guess = on_command("猜歌")
+
+
+@guess.handle()
+async def _(matcher: Matcher):
+    music_list = total_list
+    music = music_list.random()
+    id = music['id']
+    # 读取封面图片
+    image = Image.open("./src/static/mai/cover/" + str(id).rjust(5, "0") + ".png")
+    # 随机裁切
+    height, width = image.size
+    # 这里写死了是裁切1/5，也就是截取封面的1/25，可以调整改变难度
+    h, w = height // 4, width // 4
+    h_s, w_s = random.randint(0, height - h), random.randint(0, width - w)
+    image_crop = image.crop((w_s, h_s, w_s + w, h_s + h))
+    matcher.set_arg('music', music)
+    # 回答正确返回
+    matcher.set_arg('right', Message([
+        MessageSegment("text", {
+            "text": "恭喜猜对了，答案是\n"
+        }),
+        MessageSegment("text", {
+            "text": f"{music.id}. {music.title}\n"
+        }),
+        MessageSegment("image", {
+            "file": f"https://www.diving-fish.com/covers/{get_cover_len5_id(music.id)}.png"
+        }),
+    ]))
+    # 结束返回
+    matcher.set_arg('over', Message([
+        MessageSegment("text", {
+            "text": "逊欸，是这首歌\n"
+        }),
+        MessageSegment("text", {
+            "text": f"{music.id}. {music.title}\n"
+        }),
+        MessageSegment("image", {
+            "file": f"https://www.diving-fish.com/covers/{get_cover_len5_id(music.id)}.png"
+        }),
+    ]))
+    await guess.send(Message([
+        MessageSegment("text", {
+            "text": "输入歌曲id(dx与sd区分，两个都试一下),歌名或者别名"
+        }),
+        MessageSegment("image", {
+            "file": f"base64://{str(image_to_base64(image_crop), encoding='utf-8')}"
+        })
+    ]))
+    print(music)  # 狗修金专用外挂
+
+
+@guess.got("res")
+async def _(matcher: Matcher, res=ArgPlainText()):
+    flag = False
+    music = matcher.get_arg("music")
+    song = None
+    with open("./src/musicAliases.json", 'r', encoding='utf-8') as alias:
+        for s in json.load(alias):
+            if music.id == str(s["id"]):
+                song = s
+    if song is not None and res in song["alias"]:
+        flag = True
+    # 成功条件，可以更换条件比如别名xx
+    if res == music.id or res == music.title or flag:
+        await guess.finish(matcher.get_arg("right"))
+    elif res == "/结束":
+        await guess.finish(matcher.get_arg("over"))
+    else:
+        await guess.reject(random.sample(["猜错了,要不再想想？", "杂鱼~♡，杂鱼~♡，猜错歌的杂鱼~♡", "错了，速速艾草"], 1)[0])
