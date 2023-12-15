@@ -632,3 +632,80 @@ async def _(matcher: Matcher, res=ArgPlainText()):
         await guess.finish(matcher.get_arg("over"))
     else:
         await guess.reject(random.sample(["猜错了,要不再想想？", "杂鱼~♡，杂鱼~♡，猜错歌的杂鱼~♡", "错了，速速艾草"], 1)[0])
+
+example = on_command("手元")
+
+
+@example.handle()
+async def _(args: Message = CommandArg()):
+    regex = "(.+) ([绿黄红紫白]?) ([0-9]+) (.+)"
+    data = re.match(regex, str(args))
+    if data is None:
+        await example.finish()
+    mode = data[1]
+    level = data[2]
+    song_id = data[3]
+    url = data[4]
+
+    if mode == "添加":
+        with open("src/alias.json", 'r', encoding='utf-8') as fp:
+            alias = json.load(fp)
+            for song in alias:
+                if str(song["id"]) == song_id:
+                    if "example" not in song:
+                        song["example"] = []
+                    song["example"].append({
+                        "level": level,
+                        "url": url
+                    })
+                    with open("src/alias.json", 'w', encoding='utf-8') as fp1:
+                        fp1.write(json.dumps(alias, ensure_ascii=False))
+                    await example.finish("手元添加成功")
+        example.finish("别名表无此乐曲")
+    if mode == "删除":
+        with open("src/alias.json", 'r', encoding='utf-8') as fp:
+            alias = json.load(fp)
+            for song in alias:
+                if str(song["id"]) == song_id:
+                    try:
+                        id = int(url)
+                    except ValueError:
+                        await example.finish("手元编号是个数字吧")
+                    if id <= len(song["example"]):
+                        song["example"].pop(id-1)
+                        with open("src/alias.json", 'w', encoding='utf-8') as fp1:
+                            fp1.write(json.dumps(alias, ensure_ascii=False))
+                        await example.finish("手元删除成功")
+        await example.finish("别名表无此乐曲")
+
+
+teach = on_command("教我")
+
+
+@teach.handle()
+async def _(args: Message = CommandArg()):
+    regex = "([绿黄红紫白]?)(.+)"
+    data = re.match(regex, str(args))
+    if data is None:
+        await teach.finish()
+    level = data[1]
+    content = data[2]
+    with open("src/alias.json", 'r', encoding='utf-8') as fp:
+        alias = json.load(fp)
+        for song in alias:
+            if str(song["id"]) == content or content in song["alias"]:
+                if "example" not in song:
+                    await teach.finish("该歌曲还未添加手元")
+                id = 0
+                msg = ""
+                for example in song["example"]:
+                    id += 1
+                    if str(example["level"]) == level:
+                        msg += str(id) + "." + example["url"] + "\n"
+                msg = msg.rstrip()
+                if len(msg) == 0:
+                    await teach.finish("该歌曲此难度没有添加手元")
+                if song["id"] == 834:
+                    await teach.finish("潘你妈：\n" + msg)
+                await teach.finish("我为你找到了这些手元：\n" + msg)
+        await teach.finish("别名表内没有这首歌")
