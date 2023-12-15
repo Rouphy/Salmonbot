@@ -622,6 +622,7 @@ async def _(matcher: Matcher, res=ArgPlainText()):
         for s in json.load(alias):
             if music.id == str(s["id"]):
                 song = s
+                break
     if song is not None and res in song["alias"]:
         flag = True
     # 成功条件，可以更换条件比如别名xx
