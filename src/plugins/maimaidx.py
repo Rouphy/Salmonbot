@@ -1,11 +1,15 @@
 import json
 import os
+from datetime import datetime
 
 from nonebot import on_command, on_regex
+from nonebot.internal.matcher import Matcher
+from nonebot.internal.params import ArgPlainText
 from nonebot.params import CommandArg, EventMessage
 from nonebot.adapters import Event
 from nonebot.adapters.onebot.v11 import Message, MessageSegment
 
+from nekoBot.src.libraries.tool import getRating
 from src.libraries.tool import hash
 from src.libraries.maimaidx_music import *
 from src.libraries.image import *
@@ -41,26 +45,32 @@ def inner_level_q(ds1, ds2=None):
     return result_set
 
 
-inner_level = on_command('inner_level ', aliases={'定数查歌 '})
+search_music = on_regex(r"^查歌.+")
 
 
-@inner_level.handle()
-async def _(event: Event, message: Message = CommandArg()):
-    argv = str(message).strip().split(" ")
-    if len(argv) > 2 or len(argv) == 0:
-        await inner_level.finish("命令格式为\n定数查歌 <定数>\n定数查歌 <定数下限> <定数上限>")
-        return
-    if len(argv) == 1:
-        result_set = inner_level_q(float(argv[0]))
+@search_music.handle()
+async def _(message: Message = EventMessage()):
+    res = await _search_music(message)
+    if len(res) == 0:
+        await search_music.send("没有找到这样的乐曲。")
+    elif len(res) < 50:
+        search_result = ""
+        for music in sorted(res, key=lambda i: int(i['id'])):
+            search_result += f"{music['id']}. {music['title']}\n"
+        await search_music.send(Message([
+            MessageSegment("text", {
+                "text": search_result.strip()
+            })]))
     else:
-        result_set = inner_level_q(float(argv[0]), float(argv[1]))
-    if len(result_set) > 50:
-        await inner_level.finish(f"结果过多（{len(result_set)} 条），请缩小搜索范围。")
+        await search_music.send(f"结果过多（{len(res)} 条），请缩小查询范围。")
+
+
+async def _search_music(message: Message = EventMessage()):
+    regex = "查歌(.+)"
+    name = re.match(regex, str(message)).groups()[0].strip()
+    if name == "":
         return
-    s = ""
-    for elem in result_set:
-        s += f"{elem[0]}. {elem[1]} {elem[3]} {elem[4]}({elem[2]})\n"
-    await inner_level.finish(s.strip())
+    return total_list.filter(title_search=name)
 
 
 spec_rand = on_regex(r"^随个(?:dx|sd|标准)?[绿黄红紫白]?[0-9]+\+?")
@@ -280,7 +290,8 @@ async def _(event: Event, message: Message = CommandArg()):
         payload = {'username': username}
     img, success = await generate(payload)
     if success == 400:
-        await best_40_pic.send("未找到此玩家，请确保此玩家的用户名和查分器中的用户名相同。查分器网址：https://www.diving-fish.com/maimaidx/prober/")
+        await best_40_pic.send(
+            "未找到此玩家，请确保此玩家的用户名和查分器中的用户名相同。查分器网址：https://www.diving-fish.com/maimaidx/prober/")
     elif success == 403:
         await best_40_pic.send("该用户禁止了其他人获取数据。")
     else:
@@ -291,7 +302,7 @@ async def _(event: Event, message: Message = CommandArg()):
         ]))
 
 
-best_50_pic = on_command('b50', aliases={'逼五菱','比五菱','逼武林','逼舞林'})
+best_50_pic = on_command('b50', aliases={'逼五菱', '比五菱', '逼武林', '逼舞林'})
 
 
 @best_50_pic.handle()
@@ -303,7 +314,8 @@ async def _(event: Event, message: Message = CommandArg()):
         payload = {'username': username, 'b50': True}
     img, success = await generate50(payload)
     if success == 400:
-        await best_50_pic.send("未找到此玩家，请确保此玩家的用户名和查分器中的用户名相同。查分器网址：https://www.diving-fish.com/maimaidx/prober/")
+        await best_50_pic.send(
+            "未找到此玩家，请确保此玩家的用户名和查分器中的用户名相同。查分器网址：https://www.diving-fish.com/maimaidx/prober/")
     elif success == 403:
         await best_50_pic.send("该用户禁止了其他人获取数据。")
     else:
@@ -400,6 +412,10 @@ find_name = on_regex(".+是什么歌")
 
 @find_name.handle()
 async def _(message: Message = EventMessage()):
+    await find_name.finish(await _find_name(message))
+
+
+async def _find_name(message: Message = EventMessage()):
     info = re.match("(.+)是什么歌", str(message)).groups()
     title = info[0]
     with open("./src/musicAliases.json", 'r', encoding='utf-8') as fp:
@@ -410,32 +426,16 @@ async def _(message: Message = EventMessage()):
     result = []
     resultStr = ""
     for music in music_list:
-
-        # if title in music['alias']:
-        #     music = total_list.by_id(str(music['id']))
-        #     file = f"https://www.diving-fish.com/covers/{get_cover_len5_id(music['id'])}.png"
-        #     await find_name.finish(Message([
-        #         MessageSegment("text", {
-        #             "text": f"{music['id']}. {music['title']}\n"
-        #         }),
-        #         MessageSegment("image", {
-        #             "file": f"{file}"
-        #         }),
-        #         MessageSegment("text", {
-        #             "text": f"艺术家: {music['basic_info']['artist']}\n分类: {music['basic_info']['genre']}\nBPM: {music['basic_info']['bpm']}\n版本: {music['basic_info']['from']}\n难度: {'/'.join(music['level'])}"
-        #         })
-        #     ]))
-
         for alias in music['alias']:
             if title == alias:
                 flag += 1
                 result.append(music['id'])
     if flag == 0:
-        await find_name.finish("未找到该乐曲")
+        return Message("未找到该乐曲")
     elif flag == 1:
         music = total_list.by_id(str(result[0]))  # music type: dictionary
         file = f"https://www.diving-fish.com/covers/{get_cover_len5_id(music['id'])}.png"
-        await find_name.finish(Message([
+        return Message([
             MessageSegment("text", {
                 "text": f"{music['id']}. {music['title']}\n"
             }),
@@ -445,16 +445,16 @@ async def _(message: Message = EventMessage()):
             MessageSegment("text", {
                 "text": f"艺术家: {music['basic_info']['artist']}\n分类: {music['basic_info']['genre']}\nBPM: {music['basic_info']['bpm']}\n版本: {music['basic_info']['from']}\n难度: {'/'.join(music['level'])}"
             })
-        ]))
+        ])
     elif flag > 1:
         for i in result:
             music = total_list.by_id(str(i))
             resultStr += "%d.%s\n" % (i, music['title'])
-        await find_name.finish(Message([
+        return Message([
             MessageSegment("text", {
                 "text": f"{title}包含多个结果：\n{resultStr}"
             })
-        ]))
+        ])
 
 
 del_oname = on_regex(r"删除别名 .+")
@@ -468,7 +468,6 @@ async def _(message: Message = EventMessage()):
     with open("./src/musicAliases.json", 'r', encoding='utf-8') as fp:
         music_list = json.load(fp)
         fp.close()
-
 
     flag = False
     for music in music_list:
@@ -503,9 +502,10 @@ find_alias = on_regex(".+有什么别名")
 async def _(message: Message = EventMessage()):
     info = re.match("(.+)有什么别名", str(message)).groups()
     id = info[0]
+    title = None
     flag = False
     resultStr = ""
-    with open("./src/musicAliases.json", 'r', encoding='utf-8') as fp:
+    with open("。./src/musicAliases.json", 'r', encoding='utf-8') as fp:
         music_list = json.load(fp)  # 读入json表传给music_list
         fp.close()
     for music in music_list:
@@ -513,13 +513,14 @@ async def _(message: Message = EventMessage()):
             flag = True
             for alias in music['alias']:
                 resultStr += "\n%s" % alias
+            title = str(music['title'])
+            break
 
     if flag:
-        await find_alias.finish(Message([
-            MessageSegment("text", {
-                "text": f"id{id}有以下别名：{resultStr}"
-            })
-        ]))
+        if len(resultStr) != 0:
+            await find_alias.finish(f"{id}.{title} 有以下别名：{resultStr}")
+        else:
+            await find_alias.finish(f"该歌曲没有别名")
     else:
         await find_alias.finish("id不存在")
 
@@ -570,7 +571,7 @@ async def _(matcher: Matcher):
     music = music_list.random()
     id = music['id']
     # 读取封面图片
-    image = Image.open("./src/static/mai/cover/" + str(id).rjust(5, "0") + ".png")
+    image = Image.open("src/static/mai/cover/" + str(id).rjust(5, "0") + ".png")
     # 随机裁切
     height, width = image.size
     # 这里写死了是裁切1/5，也就是截取封面的1/25，可以调整改变难度
@@ -604,7 +605,7 @@ async def _(matcher: Matcher):
     ]))
     await guess.send(Message([
         MessageSegment("text", {
-            "text": "输入歌曲id(dx与sd区分，两个都试一下),歌名或者别名"
+            "text": "输入歌曲id(dx与sd区分，两个都试一下),歌名或者别名\n猜歌时可使用/查歌 名字的一部分 查歌曲id /xxx是什么歌查看别名  /结束 结束这次对话并查看答案"
         }),
         MessageSegment("image", {
             "file": f"base64://{str(image_to_base64(image_crop), encoding='utf-8')}"
@@ -618,11 +619,10 @@ async def _(matcher: Matcher, res=ArgPlainText()):
     flag = False
     music = matcher.get_arg("music")
     song = None
-    with open("./src/musicAliases.json", 'r', encoding='utf-8') as alias:
+    with open("src/musicAliases.json", 'r', encoding='utf-8') as alias:
         for s in json.load(alias):
             if music.id == str(s["id"]):
                 song = s
-                break
     if song is not None and res in song["alias"]:
         flag = True
     # 成功条件，可以更换条件比如别名xx
@@ -630,8 +630,26 @@ async def _(matcher: Matcher, res=ArgPlainText()):
         await guess.finish(matcher.get_arg("right"))
     elif res == "/结束":
         await guess.finish(matcher.get_arg("over"))
+    elif re.search("/查歌(.+)", res):
+        res = await _search_music(Message(res[1:]))
+        if len(res) == 0:
+            await guess.reject("没有找到这样的乐曲。")
+        elif len(res) < 50:
+            search_result = ""
+            for music in sorted(res, key=lambda i: int(i['id'])):
+                search_result += f"{music['id']}. {music['title']}\n"
+            await guess.reject(Message([
+                MessageSegment("text", {
+                    "text": search_result.strip()
+                })]))
+        else:
+            await guess.reject(f"结果过多（{len(res)} 条），请缩小查询范围。")
+    elif re.search("/(.+)是什么歌", res):
+        await guess.reject(await _find_name(Message(res[1:])))
     else:
+        # 可设置多个回复语句随机
         await guess.reject(random.sample(["猜错了,要不再想想？", "杂鱼~♡，杂鱼~♡，猜错歌的杂鱼~♡", "错了，速速艾草"], 1)[0])
+
 
 example = on_command("手元")
 
@@ -648,7 +666,7 @@ async def _(args: Message = CommandArg()):
     url = data[4]
 
     if mode == "添加":
-        with open("src/alias.json", 'r', encoding='utf-8') as fp:
+        with open("src/musicAliases.json", 'r', encoding='utf-8') as fp:
             alias = json.load(fp)
             for song in alias:
                 if str(song["id"]) == song_id:
@@ -658,12 +676,12 @@ async def _(args: Message = CommandArg()):
                         "level": level,
                         "url": url
                     })
-                    with open("src/alias.json", 'w', encoding='utf-8') as fp1:
+                    with open("src/musicAliases.json", 'w', encoding='utf-8') as fp1:
                         fp1.write(json.dumps(alias, ensure_ascii=False))
                     await example.finish("手元添加成功")
         example.finish("别名表无此乐曲")
     if mode == "删除":
-        with open("src/alias.json", 'r', encoding='utf-8') as fp:
+        with open("src/musicAliases.json", 'r', encoding='utf-8') as fp:
             alias = json.load(fp)
             for song in alias:
                 if str(song["id"]) == song_id:
@@ -672,8 +690,8 @@ async def _(args: Message = CommandArg()):
                     except ValueError:
                         await example.finish("手元编号是个数字吧")
                     if id <= len(song["example"]):
-                        song["example"].pop(id-1)
-                        with open("src/alias.json", 'w', encoding='utf-8') as fp1:
+                        song["example"].pop(id - 1)
+                        with open("src/musicAliases.json", 'w', encoding='utf-8') as fp1:
                             fp1.write(json.dumps(alias, ensure_ascii=False))
                         await example.finish("手元删除成功")
         await example.finish("别名表无此乐曲")
@@ -690,7 +708,7 @@ async def _(args: Message = CommandArg()):
         await teach.finish()
     level = data[1]
     content = data[2]
-    with open("src/alias.json", 'r', encoding='utf-8') as fp:
+    with open("src/musicAliases.json", 'r', encoding='utf-8') as fp:
         alias = json.load(fp)
         for song in alias:
             if str(song["id"]) == content or content in song["alias"]:
